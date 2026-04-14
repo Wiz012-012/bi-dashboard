@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>事業部別 BI ダッシュボード</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <style>
@@ -624,6 +625,128 @@
         }
         .btn-modal-action.primary:hover { background: #1d4ed8; }
 
+        /* ── Login Screen ── */
+        .login-screen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #1e40af 100%);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .login-screen.hidden { display: none; }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            padding: 48px 40px;
+            width: 400px;
+            max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+            animation: modalSlideUp 0.4s ease-out;
+        }
+        .login-logo {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+        .login-title {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .login-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+        }
+        .login-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 24px 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        .login-divider::before, .login-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .login-note {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+        .login-note a { color: var(--primary); text-decoration: none; }
+
+        .google-btn-wrapper {
+            display: flex;
+            justify-content: center;
+            min-height: 44px;
+        }
+
+        /* Custom Google button fallback */
+        .btn-google {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 32px;
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            justify-content: center;
+        }
+        .btn-google:hover { border-color: var(--primary); background: #f8fafc; }
+        .btn-google svg { flex-shrink: 0; }
+
+        /* App wrapper - hidden until login */
+        .app-wrapper { display: none; }
+        .app-wrapper.visible { display: block; }
+
+        /* User info in header */
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+        .user-name {
+            font-size: 13px;
+            font-weight: 600;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-logout {
+            padding: 6px 14px;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background: rgba(255,255,255,0.25); }
+
         /* Responsive */
         @media (max-width: 768px) {
             .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -636,6 +759,26 @@
 </head>
 <body>
 
+<!-- Login Screen -->
+<div class="login-screen" id="loginScreen">
+    <div class="login-card">
+        <div class="login-logo">📊</div>
+        <div class="login-title">BI Dashboard</div>
+        <div class="login-subtitle">事業部別 売上・コスト・利益 分析</div>
+        <div class="login-divider">Googleアカウントでログイン</div>
+        <div class="google-btn-wrapper" id="googleBtnWrapper">
+            <!-- Google Sign-In button rendered here -->
+        </div>
+        <div class="login-note">
+            ※ Googleアカウントが必要です<br>
+            ログインすることで利用規約に同意したものとみなします
+        </div>
+    </div>
+</div>
+
+<!-- App Wrapper (hidden until login) -->
+<div class="app-wrapper" id="appWrapper">
+
 <!-- Header -->
 <div class="header">
     <div>
@@ -643,6 +786,11 @@
         <div class="subtitle">事業部別 売上・コスト・利益 分析</div>
     </div>
     <div class="header-right">
+        <div class="user-info" id="userInfo">
+            <img class="user-avatar" id="userAvatar" src="" alt="">
+            <span class="user-name" id="userName"></span>
+        </div>
+        <button class="btn-logout" id="btnLogout">ログアウト</button>
         <span class="last-updated" id="lastUpdated"></span>
     </div>
 </div>
@@ -809,7 +957,101 @@
     </div>
 </div>
 
+</div><!-- /app-wrapper -->
+
 <script>
+// ══════════════════════════════════════════
+// ── Google Auth ──
+// ══════════════════════════════════════════
+const GOOGLE_CLIENT_ID = '322191230895-ue7cphbaosq97u51bh0kcm4p36i0fl4k.apps.googleusercontent.com';
+
+function decodeJwtPayload(token) {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(decodeURIComponent(atob(base64).split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    ).join('')));
+}
+
+function handleGoogleSignIn(response) {
+    const user = decodeJwtPayload(response.credential);
+    sessionStorage.setItem('bi_user', JSON.stringify({
+        name: user.name,
+        email: user.email,
+        picture: user.picture,
+        token: response.credential
+    }));
+    showApp(user);
+}
+
+function showApp(user) {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appWrapper').classList.add('visible');
+    document.getElementById('userName').textContent = user.name;
+    document.getElementById('userAvatar').src = user.picture || '';
+    document.getElementById('userAvatar').style.display = user.picture ? 'block' : 'none';
+}
+
+function logout() {
+    sessionStorage.removeItem('bi_user');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appWrapper').classList.remove('visible');
+    // Re-render Google button
+    initGoogleAuth();
+}
+
+function initGoogleAuth() {
+    if (typeof google === 'undefined' || !google.accounts) {
+        // Fallback: show manual button if GIS not loaded
+        const wrapper = document.getElementById('googleBtnWrapper');
+        wrapper.innerHTML = `<button class="btn-google" onclick="alert('Google認証ライブラリを読み込めません。\\nインターネット接続を確認し、Client IDを設定してください。')">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#34A853" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#FBBC05" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Googleでログイン
+        </button>`;
+        return;
+    }
+
+    google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleSignIn
+    });
+    google.accounts.id.renderButton(
+        document.getElementById('googleBtnWrapper'),
+        {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            width: 320,
+            text: 'signin_with',
+            shape: 'rectangular',
+            logo_alignment: 'left'
+        }
+    );
+}
+
+// Check existing session
+window.addEventListener('DOMContentLoaded', () => {
+    const saved = sessionStorage.getItem('bi_user');
+    if (saved) {
+        const user = JSON.parse(saved);
+        showApp(user);
+    } else {
+        // Wait for GIS library to load
+        const checkGIS = setInterval(() => {
+            if (typeof google !== 'undefined' && google.accounts) {
+                clearInterval(checkGIS);
+                initGoogleAuth();
+            }
+        }, 100);
+        // Fallback after 3 seconds
+        setTimeout(() => {
+            clearInterval(checkGIS);
+            initGoogleAuth();
+        }, 3000);
+    }
+});
+
+document.getElementById('btnLogout').addEventListener('click', logout);
+
 // ── State ──
 let rawData = [];
 let charts = {};
