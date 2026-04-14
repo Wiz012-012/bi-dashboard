@@ -770,7 +770,7 @@
             <!-- Google Sign-In button rendered here -->
         </div>
         <div class="login-note">
-            ※ Googleアカウントが必要です<br>
+            ※ 012grp.co.jp ドメインのGoogleアカウントが必要です<br>
             ログインすることで利用規約に同意したものとみなします
         </div>
     </div>
@@ -972,8 +972,17 @@ function decodeJwtPayload(token) {
     ).join('')));
 }
 
+const ALLOWED_DOMAIN = '012grp.co.jp';
+
 function handleGoogleSignIn(response) {
     const user = decodeJwtPayload(response.credential);
+    const emailDomain = user.email.split('@')[1];
+
+    if (emailDomain !== ALLOWED_DOMAIN) {
+        alert('アクセス権限がありません。\n\n' + ALLOWED_DOMAIN + ' ドメインのGoogleアカウントでログインしてください。\n\nログイン試行: ' + user.email);
+        return;
+    }
+
     sessionStorage.setItem('bi_user', JSON.stringify({
         name: user.name,
         email: user.email,
@@ -1012,7 +1021,8 @@ function initGoogleAuth() {
 
     google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleSignIn
+        callback: handleGoogleSignIn,
+        hosted_domain: ALLOWED_DOMAIN
     });
     google.accounts.id.renderButton(
         document.getElementById('googleBtnWrapper'),
